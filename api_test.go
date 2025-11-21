@@ -21,20 +21,23 @@ import (
 
 func TestNewWithConfig(t *testing.T) {
 	tests := []struct {
-		name      string
-		setupMock func(*mocks.MockConfigInterface)
-		err       error
+		name        string
+		setupMock   func(*mocks.MockConfigInterface)
+		err         error
+		shouldClose bool
 	}{
 		{
-			name: "nil config",
-			err:  fmt.Errorf("config is nil"),
+			name:        "nil config",
+			err:         fmt.Errorf("config is nil"),
+			shouldClose: false,
 		},
 		{
 			name: "empty token",
 			setupMock: func(m *mocks.MockConfigInterface) {
 				m.EXPECT().BotTokenCheckString().Return("")
 			},
-			err: ErrEmptyToken,
+			err:         ErrEmptyToken,
+			shouldClose: false,
 		},
 		{
 			name: "valid config",
@@ -46,7 +49,8 @@ func TestNewWithConfig(t *testing.T) {
 				m.EXPECT().GetDebugLogMode().Return(true)
 				m.EXPECT().GetDebugLogChat().Return(int64(123))
 			},
-			err: nil,
+			err:         nil,
+			shouldClose: true,
 		},
 		{
 			name: "invalid url",
@@ -55,7 +59,8 @@ func TestNewWithConfig(t *testing.T) {
 				m.EXPECT().GetHttpBotAPITimeOut().Return(10)
 				m.EXPECT().GetHttpBotAPIUrl().Return("http://[::1]:namedport")
 			},
-			err: ErrInvalidURL,
+			err:         ErrInvalidURL,
+			shouldClose: false,
 		},
 	}
 
@@ -70,7 +75,7 @@ func TestNewWithConfig(t *testing.T) {
 				tt.setupMock(mockCfg)
 				cfg = mockCfg
 			}
-			_, err := NewWithConfig(cfg)
+			api, err := NewWithConfig(cfg)
 			if tt.err != nil {
 				require.Error(t, err)
 				if tt.name == "nil config" {
@@ -80,6 +85,9 @@ func TestNewWithConfig(t *testing.T) {
 				}
 			} else {
 				require.NoError(t, err)
+				if tt.shouldClose {
+					require.NoError(t, api.Close())
+				}
 			}
 		})
 	}
@@ -88,6 +96,7 @@ func TestNewWithConfig(t *testing.T) {
 func TestBytesToProperUpdate(t *testing.T) {
 	api, err := New("test")
 	require.NoError(t, err)
+	defer func() { _ = api.Close() }()
 
 	tests := []struct {
 		name       string
@@ -172,6 +181,7 @@ func mustMarshal(t *testing.T, v any) []byte {
 func TestBytesToProperAttachment(t *testing.T) {
 	api, err := New("test")
 	require.NoError(t, err)
+	defer func() { _ = api.Close() }()
 
 	tests := []struct {
 		name     string
@@ -256,6 +266,7 @@ func TestGetUpdates(t *testing.T) {
 
 	api, err := NewWithConfig(mockCfg)
 	require.NoError(t, err)
+	defer func() { _ = api.Close() }()
 
 	api.pause = 10 * time.Millisecond
 
@@ -275,6 +286,7 @@ func TestGetUpdates(t *testing.T) {
 func TestGetHandler(t *testing.T) {
 	api, err := New("test")
 	require.NoError(t, err)
+	defer func() { _ = api.Close() }()
 
 	ch := make(chan schemes.UpdateInterface, 1)
 	handler := api.GetHandler(ch)

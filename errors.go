@@ -8,6 +8,7 @@ import (
 var (
 	ErrEmptyToken = errors.New("bot token is empty")
 	ErrInvalidURL = errors.New("invalid API URL")
+	ErrTokenInUse = errors.New("bot token is already in use by another Api instance")
 )
 
 type APIError struct {

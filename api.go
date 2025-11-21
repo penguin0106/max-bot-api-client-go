@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/max-messenger/max-bot-api-client-go/configservice"
@@ -29,6 +30,28 @@ const (
 
 	maxRetries = 3
 )
+
+// tokenLocks guards against creating multiple Api instances with the same token
+var (
+	tokenLocksMu sync.Mutex
+	tokenLocks   = map[string]struct{}{}
+)
+
+func acquireTokenLock(token string) error {
+	tokenLocksMu.Lock()
+	defer tokenLocksMu.Unlock()
+	if _, exists := tokenLocks[token]; exists {
+		return ErrTokenInUse
+	}
+	tokenLocks[token] = struct{}{}
+	return nil
+}
+
+func releaseTokenLock(token string) {
+	tokenLocksMu.Lock()
+	defer tokenLocksMu.Unlock()
+	delete(tokenLocks, token)
+}
 
 // Api represents the MAX Bot API client
 type Api struct {
@@ -54,6 +77,10 @@ func New(token string) (*Api, error) {
 	u, err := url.Parse(defaultAPIURL)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidURL, err)
+	}
+
+	if err := acquireTokenLock(token); err != nil {
+		return nil, err
 	}
 
 	cl := newClient(token, version, u, &http.Client{
@@ -112,6 +139,10 @@ func NewWithConfig(cfg configservice.ConfigInterface) (*Api, error) {
 		apiVersion = version
 	}
 
+	if err := acquireTokenLock(token); err != nil {
+		return nil, err
+	}
+
 	cl := newClient(token, apiVersion, u, &http.Client{
 		Timeout: timeout,
 	})
@@ -132,6 +163,18 @@ func NewWithConfig(cfg configservice.ConfigInterface) (*Api, error) {
 	api.Debugs = newDebugs(cl, cfg.GetDebugLogChat())
 
 	return api, nil
+}
+
+// Close releases resources and unlocks the token for this Api instance
+func (a *Api) Close() error {
+	if a == nil || a.client == nil {
+		return nil
+	}
+	// Release HTTP resources first
+	_ = a.client.Close()
+	// Release token lock
+	releaseTokenLock(a.client.key)
+	return nil
 }
 
 // updateTypeMap maps update types to their corresponding struct constructors
