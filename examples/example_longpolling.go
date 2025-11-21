@@ -21,19 +21,27 @@ import (
 
 func main() {
 	// Initialisation
-	api := maxbot.New(os.Getenv("TOKEN"))
+	api, err := maxbot.New(os.Getenv("TOKEN"))
+	if err != nil {
+		log.Fatalf("failed to create api: %v", err)
+	}
+	defer func() { _ = api.Close() }()
 
 	// Some methods demo:
-	info, err := api.Bots.GetBot()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	info, err := api.Bots.GetBot(ctx)
 	log.Printf("Get me: %#v %#v", info, err)
 
-	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
+		defer cancel()
 		for upd := range api.GetUpdates(ctx) {
 			log.Printf("Received: %#v", upd)
 			switch upd := upd.(type) {
 			case *schemes.MessageCreatedUpdate:
 				_, err := api.Messages.Send(
+					ctx,
 					maxbot.NewMessage().
 						SetUser(upd.Message.Sender.UserId).
 						SetText(fmt.Sprintf("Hello, %s! Your message: %s", upd.Message.Sender.Name, upd.Message.Body.Text)),

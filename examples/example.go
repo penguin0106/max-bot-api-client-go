@@ -62,6 +62,7 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("NewWithConfig failed. Stop.")
 	}
+	defer func() { _ = api.Close() }()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
